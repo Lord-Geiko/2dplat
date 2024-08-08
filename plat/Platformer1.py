@@ -14,6 +14,9 @@ screen = pygame.display.set_mode(WINDOW_SIZE,0,32) # initiate the window
 
 display = pygame.Surface((300,200)) # used as the surface for rendering, which is scaled
 
+MAX_HP = 100
+player_hp = MAX_HP
+
 moving_right = False
 moving_left = False
 player_vertical_momentum = 0
@@ -70,7 +73,6 @@ def change_action(action_var,frame,new_value):
         action_var = new_value
         frame = 0
     return action_var,frame
-        
 
 animation_database = {}
 
@@ -150,8 +152,24 @@ def move(rect,movement,tiles):
             collision_types['top'] = True
     return rect, collision_types
 
+def draw_hp_bar(surface, x, y, hp, max_hp):
+    BAR_LENGTH = 50
+    BAR_HEIGHT = 5
+    fill = (hp / max_hp) * BAR_LENGTH
+    bg_rect = pygame.Rect(x, y, BAR_LENGTH, BAR_HEIGHT)
+    fill_rect = pygame.Rect(x, y, fill, BAR_HEIGHT)
+    pygame.draw.rect(surface, (60, 60, 60), bg_rect)  # Dark grey background
+    pygame.draw.rect(surface, (255, 0, 0), fill_rect)
+    pygame.draw.rect(surface, (255, 255, 255), bg_rect, 1)
+
 while True: # game loop
     display.fill((146,244,255)) # clear screen by filling it with blue
+
+     # Draw HP bar on the display surface
+    draw_hp_bar(display, display.get_width() - 55, 5, player_hp, MAX_HP)
+
+    # Scale display to screen
+    screen.blit(pygame.transform.scale(display, WINDOW_SIZE), (0, 0))
 
     if grass_sound_timer > 0:
         grass_sound_timer -= 1
@@ -293,6 +311,10 @@ while True: # game loop
                 if air_timer < 6:
                     jump_sound.play()
                     player_vertical_momentum = -5
+            if event.key == K_h: #press 'h' to decrease hp
+                player_hp = max(0, player_hp - 10)
+            if event.key == K_g: #press 'g' to increase hp
+                player_hp = max(0, player_hp + 10)
         if event.type == KEYUP:
             if event.key == K_d:
                 moving_right = False
