@@ -8,12 +8,13 @@ pygame.mixer.set_num_channels(64)
 
 pygame.display.set_caption('Above & Beyond')
 
-WINDOW_SIZE = (600,400)
+WINDOW_SIZE = (800,600)
 
 screen = pygame.display.set_mode(WINDOW_SIZE,0,32) # initiate the window
 
 display = pygame.Surface((300,200)) # used as the surface for rendering, which is scaled
 
+SPAWN_X, SPAWN_Y = 100, 100
 MAX_HP = 100
 player_hp = MAX_HP
 
@@ -24,10 +25,24 @@ npc_vertical_momentum = 0
 vertical_momentum = 0
 air_timer = 0
 
+#DEFINE THE HQ AND ITS DOOR
+HEADQUARTER_X, HEADQUARTER_Y = 550, 105
+HEADQUARTER_WIDTH, HEADQUARTER_HEIGHT = 64, 64 #ADJUST BASED ON YOUR ART
+DOOR_WIDTH, DOOR_HEIGHT = 10, 10 # ADJUST BASED ON DOOR ART
+DOOR_OFFSET_X, DOOR_OFFSET_Y = 18, 45 #ADJUST BASED ON DOOR POSITION IN ART
+
+#CREATE RECTANGLES FOR THE HEADQUARTERS AND ITS DOORS
+headquarter_rect = pygame.Rect(HEADQUARTER_X, HEADQUARTER_Y, HEADQUARTER_WIDTH, HEADQUARTER_HEIGHT)
+door_rect = pygame.Rect(headquarter_rect.x + DOOR_OFFSET_X, headquarter_rect.y + DOOR_OFFSET_Y, DOOR_WIDTH, DOOR_HEIGHT)
+
 true_scroll = [0,0]
 
 CHUNK_SIZE = 8
 NPC_SPEED = 1
+
+BOUNCE_COOLDOWN = 30 #FRAMES
+bounce_timer = 0
+MUSHROOM_BOUNCE_STRENGTH = -15 #STRONGER UPWARDS BOUNCE
 
 def generate_chunk(x,y):
     chunk_data = []
@@ -80,8 +95,11 @@ animation_database['run'] = load_animation('player_animations/run',[7,7])
 animation_database['idle'] = load_animation('player_animations/idle',[7,7,40])
 animation_database['npc'] = load_animation('player_animations/npc', [7, 7, 40])
 animation_database['shroom'] = load_animation('player_animations/shroom', [7, 7, 50])
-game_map = {}
+animation_database['pixie'] = load_animation('player_animations/pixie', [7,7])
+animation_database['headquarter'] = load_animation('player_animations/headquarter', [7])
+animation_database['tree'] = load_animation('player_animations/tree', [7])
 
+game_map = {}
 
 grass_img = pygame.image.load('grass.png')
 dirt_img = pygame.image.load('dirt.png')
@@ -113,7 +131,25 @@ npc_action = 'npc'
 npc_frame = 0
 npc_flip = False
 
-shroom_rect = pygame.Rect(55, 145, 5, 13)
+pixie_action = 'pixie'
+pixie_frame = 0
+pixie_flip = False
+
+headquarter_action = 'headquarter'
+headquarter_frame = 0
+headquarter_flip = False
+
+tree_action = 'tree'
+tree_frame = 0
+tree_flip = False
+
+tree_rect = pygame.Rect(-550, 105, 5, 13)
+
+headquarter_rect = pygame.Rect(550, 105, 5, 13)
+
+pixie_rect = pygame.Rect(400, 145, 5, 13)
+
+shroom_rect = pygame.Rect(55, 145, 5, 5)
 
 npc_rect = pygame.Rect(85, 145, 5, 13)
 
@@ -162,15 +198,22 @@ def draw_hp_bar(surface, x, y, hp, max_hp):
     pygame.draw.rect(surface, (255, 0, 0), fill_rect)
     pygame.draw.rect(surface, (255, 255, 255), bg_rect, 1)
 
+def check_shroom_collision(player, shroom):
+    return player.colliderect(shroom)
+
 while True: # game loop
     display.fill((146,244,255)) # clear screen by filling it with blue
 
      # Draw HP bar on the display surface
     draw_hp_bar(display, display.get_width() - 55, 5, player_hp, MAX_HP)
 
+    #Update door position for if headquarter position changes
+    door_rect.x = headquarter_rect.x + DOOR_OFFSET_X
+    door_rect.y = headquarter_rect.y + DOOR_OFFSET_Y
+
     # Scale display to screen
     screen.blit(pygame.transform.scale(display, WINDOW_SIZE), (0, 0))
-
+    
     if grass_sound_timer > 0:
         grass_sound_timer -= 1
 
@@ -219,7 +262,26 @@ while True: # game loop
     if player_movement[0] < 0:
         player_flip = True
         player_action,player_frame = change_action(player_action,player_frame,'run')
-
+    
+    #check for collision with shroom
+    if check_shroom_collision(player_rect, shroom_rect) and bounce_timer == 0:
+        if player_rect.bottom <= shroom_rect.top + 5: # allow a small margin for detection
+            #bounce the player high into the sky
+            player_vertical_momentum = MUSHROOM_BOUNCE_STRENGTH
+            bounce_timer = BOUNCE_COOLDOWN
+        #determine the direction to bounce
+        if player_rect.centerx < shroom_rect.centerx:
+            #player is left of shroom
+            player_rect.x -= 200 #move player 2 tiles
+            player_movement[0] = -5 # set horizontal movement to left
+        else:
+            #player is to the right
+            player_rect.x += 200
+            player_movement[0] = 5
+    
+    if bounce_timer > 0:
+        bounce_timer -= 1
+    
     if player_rect.x > npc_rect.x:
         npc_rect.x += NPC_SPEED
         npc_flip = False
@@ -275,13 +337,12 @@ while True: # game loop
     else:
         air_timer += 1
 
-    player_frame += 1
-    if player_frame >= len(animation_database[player_action]):
-        player_frame = 0
-    player_img_id = animation_database[player_action][player_frame]
-    player_img = animation_frames[player_img_id]
-    display.blit(pygame.transform.flip(player_img,player_flip,False),(player_rect.x-scroll[0],player_rect.y-scroll[1]))
-    
+    if player_rect.colliderect(door_rect):
+        #teleport player to spawn
+        player_rect.x = SPAWN_X
+        player_rect.y = SPAWN_Y
+        player_vertical_momentum = 0
+
     npc_frame += 1
     if npc_frame >= len(animation_database[npc_action]):
         npc_frame = 0
@@ -295,6 +356,34 @@ while True: # game loop
     shroom_img_id = animation_database[shroom_action][shroom_frame]
     shroom_img = animation_frames[shroom_img_id]
     display.blit(pygame.transform.flip(shroom_img, shroom_flip, False), (shroom_rect.x-scroll[0], shroom_rect.y-scroll[1]))
+
+    pixie_frame += 1
+    if pixie_frame >= len(animation_database[pixie_action]):
+        pixie_frame = 0
+    pixie_img_id = animation_database[pixie_action][pixie_frame]
+    pixie_img = animation_frames[pixie_img_id]
+    display.blit(pygame.transform.flip(pixie_img, pixie_flip, False), (pixie_rect.x-scroll[0], pixie_rect.y-scroll[1]))
+
+    headquarter_frame += 1
+    if headquarter_frame >= len(animation_database[headquarter_action]):
+        headquarter_frame = 0
+    headquarter_img_id = animation_database[headquarter_action][headquarter_frame]
+    headquarter_img = animation_frames[headquarter_img_id]
+    display.blit(pygame.transform.flip(headquarter_img, headquarter_flip, False), (headquarter_rect.x-scroll[0], headquarter_rect.y-scroll[1]))
+
+    tree_frame += 1
+    if tree_frame >= len(animation_database[tree_action]):
+        tree_frame = 0
+    tree_img_id = animation_database[tree_action][tree_frame]
+    tree_img = animation_frames[tree_img_id]
+    display.blit(pygame.transform.flip(tree_img, tree_flip, False), (tree_rect.x-scroll[0], tree_rect.y-scroll[1]))
+
+    player_frame += 1
+    if player_frame >= len(animation_database[player_action]):
+        player_frame = 0
+    player_img_id = animation_database[player_action][player_frame]
+    player_img = animation_frames[player_img_id]
+    display.blit(pygame.transform.flip(player_img,player_flip,False),(player_rect.x-scroll[0],player_rect.y-scroll[1]))
 
     for event in pygame.event.get(): # event loop
         if event.type == QUIT:
@@ -320,7 +409,8 @@ while True: # game loop
                 moving_right = False
             if event.key == K_a:
                 moving_left = False
-        
+    #DREW THE DOOR FOR DEBUG
+    #pygame.draw.rect(display, (255,0,0), (door_rect.x-scroll[0], door_rect.y-scroll[1], door_rect.width, door_rect.height), 1)
     screen.blit(pygame.transform.scale(display,WINDOW_SIZE),(0,0))
     pygame.display.update()
     clock.tick(60)
